@@ -39,8 +39,9 @@ def test_start_monta_comando_certo_e_retorna_pid(tmp_path):
     args, kwargs = runner.popen_calls[0]
     assert args == SUDO + ["openfortivpn", "-c", "/etc/openfortivpn/matriz.conf"]
     assert kwargs["start_new_session"] is True
-    # bug preservado (issue #4): stdin não é definido no Popen
-    assert "stdin" not in kwargs
+    # issue #4: stdin fechado para evitar bloqueio esperando entrada interativa
+    # via sudo quando a GUI não fornece nenhuma.
+    assert kwargs["stdin"] == subprocess.DEVNULL
 
 
 def test_start_escreve_no_log(tmp_path):

@@ -22,6 +22,7 @@ class OpenfortivpnBackend(VpnBackend):
             f.write(f"\n--- connect {profile_path} {time.ctime()} ---\n")
             proc = self._runner.popen(
                 SUDO + ["openfortivpn", "-c", profile_path],
+                stdin=subprocess.DEVNULL,
                 stdout=f,
                 stderr=f,
                 start_new_session=True,
