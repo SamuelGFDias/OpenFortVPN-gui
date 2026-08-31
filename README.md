@@ -33,3 +33,17 @@ Um atalho `.desktop` (`Exec=~/.local/bin/openfortivpn-gui`) pode ser criado em
 - `/tmp/openfortivpn-gui.start` — timestamp de início da sessão ativa
 
 Veja `AGENTS.md` para decisões de arquitetura e limitações conhecidas.
+
+## Desenvolvimento e testes
+
+O código é organizado em camadas (`core/`, `services/`, `controller/`, `ui/`) — o executável
+`openfortivpn-gui` é apenas um shim fino que chama `ui.application.VpnApp`. Detalhes da estrutura
+estão em `AGENTS.md`.
+
+Para rodar a suíte de testes:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate  # opcional
+pip install -r requirements/dev.txt
+python3 -m pytest tests/
+```
