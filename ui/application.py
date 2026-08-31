@@ -73,6 +73,7 @@ class VpnApp(Gtk.Application):
         stack = Gtk.Stack()
         stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
         stack.set_transition_duration(200)
+        self._stack = stack
 
         switcher = Gtk.StackSwitcher()
         switcher.set_stack(stack)
