@@ -6,6 +6,7 @@ from typing import Any
 from core.interfaces.state_store import AppStateStore, HistoryStore
 from core.models.connection_session import ConnectionSession
 from core.models.history_record import HistoryRecord
+from services.runtime_paths import resolve_runtime_dir
 
 RETENTION_SECONDS = 7 * 24 * 3600
 
@@ -28,10 +29,12 @@ class JsonAppStateStore(AppStateStore):
     def __init__(
         self,
         state_path: str = os.path.expanduser("~/.config/openfortivpn-gui/state.json"),
-        session_path: str = "/tmp/openfortivpn-gui.start",
+        session_path: str | None = None,
     ) -> None:
         self._state_path = state_path
-        self._session_path = session_path
+        self._session_path = session_path or os.path.join(
+            resolve_runtime_dir(), "active_session.json"
+        )
 
     def load_last_profile(self) -> str | None:
         data = _load_json(self._state_path, {})

@@ -1,9 +1,11 @@
+import os
 import subprocess
 import time
 
 from core.interfaces.vpn_backend import VpnBackend
 from core.models.connect_outcome import ConnectOutcome
 from services.command_runner import CommandRunner, SubprocessCommandRunner
+from services.runtime_paths import resolve_runtime_dir
 
 SUDO = ["sudo", "-n"]
 
@@ -11,10 +13,10 @@ SUDO = ["sudo", "-n"]
 class OpenfortivpnBackend(VpnBackend):
     def __init__(
         self,
-        log_path: str = "/tmp/openfortivpn-gui.log",
+        log_path: str | None = None,
         command_runner: CommandRunner | None = None,
     ) -> None:
-        self._log_path = log_path
+        self._log_path = log_path or os.path.join(resolve_runtime_dir(), "openfortivpn.log")
         self._runner = command_runner or SubprocessCommandRunner()
 
     def start(self, profile_path: str) -> int:
