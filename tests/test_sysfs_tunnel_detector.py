@@ -23,15 +23,23 @@ def test_snapshot_sem_interfaces_relevantes_retorna_vazio(tmp_path):
     assert detector.snapshot() == frozenset()
 
 
-def test_detect_new_interface_ignora_baseline_recebido(tmp_path):
+def test_detect_new_interface_exclui_interfaces_do_baseline(tmp_path):
     net_dir = _make_net_dir(tmp_path, ["tun0", "eth0"])
     detector = SysfsTunnelDetector(net_dir=net_dir)
 
-    # Mesmo passando um baseline que já contém a interface existente, o método
-    # replica o bug legado (issue #1) e retorna a interface mesmo assim.
+    # tun0 já estava no baseline: não deve ser reportada como nova (issue #1).
     resultado = detector.detect_new_interface(baseline=frozenset({"tun0"}))
 
-    assert resultado == "tun0"
+    assert resultado is None
+
+
+def test_detect_new_interface_retorna_apenas_a_interface_nova(tmp_path):
+    net_dir = _make_net_dir(tmp_path, ["tun0", "tun1", "eth0"])
+    detector = SysfsTunnelDetector(net_dir=net_dir)
+
+    resultado = detector.detect_new_interface(baseline=frozenset({"tun0"}))
+
+    assert resultado == "tun1"
 
 
 def test_detect_new_interface_sem_interfaces_retorna_none(tmp_path):

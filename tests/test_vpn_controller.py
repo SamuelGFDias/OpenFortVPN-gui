@@ -33,16 +33,25 @@ class FakeVpnBackend(VpnBackend):
 
 
 class FakeTunnelStateDetector(TunnelStateDetector):
-    def __init__(self, iface=None):
+    def __init__(self, iface=None, present=None):
         self.iface = iface
+        # Conjunto opcional de interfaces "presentes" independente de `iface`,
+        # usado para testar is_interface_present() de forma desacoplada do
+        # valor único de `iface` (ex.: reattach onde a iface salva difere da
+        # que o snapshot "cru" traria).
+        self._present = set(present) if present is not None else None
 
     def snapshot(self) -> frozenset[str]:
         return frozenset({self.iface}) if self.iface else frozenset()
 
     def detect_new_interface(self, baseline: frozenset[str]):
-        return self.iface
+        current = frozenset({self.iface}) if self.iface else frozenset()
+        new = current - baseline
+        return next(iter(new), None)
 
     def is_interface_present(self, name: str) -> bool:
+        if self._present is not None:
+            return name in self._present
         return name == self.iface
 
 
@@ -272,3 +281,61 @@ def test_select_profile_com_nome_invalido_e_ignorado():
     controller.select_profile("inexistente.conf")
 
     assert controller.selected_profile == "a.conf"
+
+
+def test_interface_preexistente_antes_de_start_nao_dispara_connected_sozinha():
+    controller, backend, detector, app_state_store, history_store = make_controller()
+
+    # tun0 já existe no sistema antes de start_connection() ser chamado.
+    detector.iface = "tun0"
+
+    controller.start_connection()
+    assert controller.state == ConnectionState.CONNECTING
+
+    # tick imediatamente após: só a interface pré-existente (no baseline)
+    # está presente — não deve, sozinha, disparar "connected" (issue #1).
+    events = controller.tick()
+    assert controller.state == ConnectionState.CONNECTING
+    assert events == []
+
+    # uma interface nova (fora do baseline) aparece: agora sim conecta.
+    detector.iface = "tun1"
+    events = controller.tick()
+
+    assert controller.state == ConnectionState.CONNECTED
+    assert len(events) == 1
+    assert events[0].kind == "connected"
+    assert controller.session.iface == "tun1"
+
+
+def test_initialize_reattach_prioriza_iface_salva_sobre_snapshot_cru():
+    sessao_previa = ConnectionSession(profile="filial.conf", iface="tun5", started_at=300.0)
+    controller, backend, detector, app_state_store, history_store = make_controller(
+        running=True, profiles=("filial.conf",), active_session=sessao_previa
+    )
+    # A iface salva ("tun5") está presente, mas o snapshot "cru" do detector
+    # traria outra interface ("tun9") caso o controller ignorasse a sessão
+    # salva e caísse direto no fallback "qualquer interface presente".
+    detector.iface = "tun9"
+    detector._present = {"tun5", "tun9"}
+
+    events = controller.initialize()
+
+    assert events == []
+    assert controller.state == ConnectionState.CONNECTED
+    assert controller.session is not None
+    assert controller.session.iface == "tun5"
+    assert controller.session.started_at == 300.0
+
+
+def test_initialize_reattach_sem_sessao_salva_usa_qualquer_interface_presente():
+    controller, backend, detector, app_state_store, history_store = make_controller(
+        running=True, iface="tun0", active_session=None
+    )
+
+    events = controller.initialize()
+
+    assert events == []
+    assert controller.state == ConnectionState.CONNECTED
+    assert controller.session is not None
+    assert controller.session.iface == "tun0"

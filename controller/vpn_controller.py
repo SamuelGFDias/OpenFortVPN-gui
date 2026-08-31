@@ -39,6 +39,7 @@ class VpnController:
         self._state = ConnectionState.DISCONNECTED
         self._session: ConnectionSession | None = None
         self._stopping_until = 0.0
+        self._pending_baseline: frozenset[str] = frozenset()
 
     @property
     def state(self) -> ConnectionState:
@@ -66,14 +67,17 @@ class VpnController:
 
     def initialize(self) -> list[ControllerEvent]:
         if self._backend.is_running(None):
-            iface = self._detector.detect_new_interface(frozenset())
+            loaded = self._app_state_store.load_active_session()
+            iface: str | None = None
+            if loaded is not None and loaded.iface and self._detector.is_interface_present(loaded.iface):
+                iface = loaded.iface
+            else:
+                current = self._detector.snapshot()
+                iface = next(iter(current), None)
             if iface:
-                loaded = self._app_state_store.load_active_session()
                 started_at = loaded.started_at if loaded and loaded.started_at else time.time()
                 profile = self._selected_profile or (loaded.profile if loaded else "?")
-                self._session = ConnectionSession(
-                    profile=profile, iface=iface, started_at=started_at
-                )
+                self._session = ConnectionSession(profile=profile, iface=iface, started_at=started_at)
                 self._state = ConnectionState.CONNECTED
             else:
                 self._state = ConnectionState.CONNECTING
@@ -84,6 +88,7 @@ class VpnController:
         if not self._selected_profile:
             return [ControllerEvent(kind="connect_failed", reason="Nenhum perfil de VPN configurado")]
         self._app_state_store.save_last_profile(self._selected_profile)
+        self._pending_baseline = self._detector.snapshot()
         profile_path = os.path.join(self._profile_dir, self._selected_profile)
         pid = self._backend.start(profile_path)
         self._session = ConnectionSession(profile=self._selected_profile, pid=pid)
@@ -105,6 +110,7 @@ class VpnController:
             events.append(ControllerEvent(kind="cancelled"))
 
         self._session = None
+        self._pending_baseline = frozenset()
         self._state = ConnectionState.DISCONNECTED
         self._stopping_until = time.time() + STOP_GRACE_SECONDS
         self._app_state_store.clear_active_session()
@@ -116,9 +122,24 @@ class VpnController:
         if now < self._stopping_until:
             return events
 
+        new_profiles = self._profile_source.list_profiles()
+        if new_profiles != self._profiles:
+            self._profiles = new_profiles
+            if self._selected_profile not in self._profiles:
+                self._selected_profile = self._profiles[0] if self._profiles else None
+            events.append(ControllerEvent(kind="profiles_changed"))
+
         pid = self._session.pid if self._session else None
         running = self._backend.is_running(pid)
-        iface = self._detector.detect_new_interface(frozenset())
+
+        if self._state == ConnectionState.CONNECTED and self._session and self._session.iface:
+            iface = (
+                self._session.iface
+                if self._detector.is_interface_present(self._session.iface)
+                else None
+            )
+        else:
+            iface = self._detector.detect_new_interface(self._pending_baseline)
 
         if not running:
             if self._state == ConnectionState.CONNECTED and self._session:
@@ -133,6 +154,7 @@ class VpnController:
                     ControllerEvent(kind="connect_failed", reason=outcome.message if outcome else None)
                 )
             self._session = None
+            self._pending_baseline = frozenset()
             self._state = ConnectionState.DISCONNECTED
             self._app_state_store.clear_active_session()
         elif iface:
@@ -145,6 +167,8 @@ class VpnController:
                 )
                 self._app_state_store.save_active_session(self._session)
                 events.append(ControllerEvent(kind="connected"))
+            elif self._session is not None and self._session.iface != iface:
+                self._session.iface = iface
             self._state = ConnectionState.CONNECTED
         else:
             self._state = ConnectionState.CONNECTING

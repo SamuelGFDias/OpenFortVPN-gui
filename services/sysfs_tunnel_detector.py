@@ -20,10 +20,9 @@ class SysfsTunnelDetector(TunnelStateDetector):
         return self._current_interfaces()
 
     def detect_new_interface(self, baseline: frozenset[str]) -> str | None:
-        # Paridade com o comportamento legado (tunnel_iface()): NÃO diferencia do baseline.
-        # Bug conhecido (issue #1) — corrigido na próxima fase.
         current = self._current_interfaces()
-        return next(iter(current), None)
+        new = current - baseline
+        return next(iter(new), None)
 
     def is_interface_present(self, name: str) -> bool:
         return os.path.exists(os.path.join(self._net_dir, name))
