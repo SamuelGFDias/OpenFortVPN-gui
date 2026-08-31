@@ -7,7 +7,7 @@ GUI pessoal (GTK3 + AppIndicator3) para ligar/desligar o [openfortivpn](https://
 - Python 3 com `python3-gi` (PyGObject)
 - GTK 3, `libappindicator3` (ou `libayatana-appindicator3`)
 - `openfortivpn` instalado
-- `sudo -n` configurado para o usuário conseguir rodar `openfortivpn` e `pkill -x openfortivpn` sem senha
+- `sudo -n` configurado para o usuário conseguir rodar `openfortivpn`, `kill` e `pkill -x openfortivpn` sem senha
 - Perfis de conexão em `/etc/openfortivpn/*.conf` ou `/etc/openfortivpn/config`
 
 ## Instalação
@@ -29,8 +29,8 @@ Um atalho `.desktop` (`Exec=~/.local/bin/openfortivpn-gui`) pode ser criado em
 
 - `~/.config/openfortivpn-gui/state.json` — último perfil selecionado
 - `~/.config/openfortivpn-gui/history.json` — histórico de conexões
-- `/tmp/openfortivpn-gui.log` — stdout/stderr do processo `openfortivpn`
-- `/tmp/openfortivpn-gui.start` — timestamp de início da sessão ativa
+- `$XDG_RUNTIME_DIR/openfortivpn-gui/` (fallback `~/.cache/openfortivpn-gui/`) — log
+  (stdout/stderr do processo `openfortivpn`) e marcador de sessão ativa
 
 Veja `AGENTS.md` para decisões de arquitetura e limitações conhecidas.
 
