@@ -1,28 +1,13 @@
-import json
 import os
 import time
-from typing import Any
 
 from core.interfaces.state_store import AppStateStore, HistoryStore
 from core.models.connection_session import ConnectionSession
 from core.models.history_record import HistoryRecord
+from services.json_utils import load_json, save_json
 from services.runtime_paths import resolve_runtime_dir
 
 RETENTION_SECONDS = 7 * 24 * 3600
-
-
-def _load_json(path: str, default: Any) -> Any:
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except Exception:
-        return default
-
-
-def _save_json(path: str, data: Any) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
 
 
 class JsonAppStateStore(AppStateStore):
@@ -37,26 +22,26 @@ class JsonAppStateStore(AppStateStore):
         )
 
     def load_last_profile(self) -> str | None:
-        data = _load_json(self._state_path, {})
+        data = load_json(self._state_path, {})
         if not isinstance(data, dict):
             return None
         return data.get("last_profile")
 
     def save_last_profile(self, profile: str) -> None:
-        data = _load_json(self._state_path, {})
+        data = load_json(self._state_path, {})
         if not isinstance(data, dict):
             data = {}
         data["last_profile"] = profile
-        _save_json(self._state_path, data)
+        save_json(self._state_path, data)
 
     def load_active_session(self) -> ConnectionSession | None:
-        data = _load_json(self._session_path, None)
+        data = load_json(self._session_path, None)
         if not isinstance(data, dict):
             return None
         return ConnectionSession.from_payload(data)
 
     def save_active_session(self, session: ConnectionSession) -> None:
-        _save_json(self._session_path, session.to_payload())
+        save_json(self._session_path, session.to_payload())
 
     def clear_active_session(self) -> None:
         try:
@@ -73,7 +58,7 @@ class JsonHistoryStore(HistoryStore):
         self._history_path = history_path
 
     def load(self) -> list[HistoryRecord]:
-        raw = _load_json(self._history_path, [])
+        raw = load_json(self._history_path, [])
         if not isinstance(raw, list):
             return []
         records = [HistoryRecord.from_payload(item) for item in raw if isinstance(item, dict)]
@@ -84,4 +69,4 @@ class JsonHistoryStore(HistoryStore):
         records.append(record)
         cutoff = time.time() - RETENTION_SECONDS
         records = [r for r in records if r.start >= cutoff]
-        _save_json(self._history_path, [r.to_payload() for r in records])
+        save_json(self._history_path, [r.to_payload() for r in records])

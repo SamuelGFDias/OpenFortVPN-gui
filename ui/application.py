@@ -11,10 +11,12 @@ from controller.vpn_controller import VpnController
 from core.models.connection_state import ConnectionState
 from core.models.controller_event import ControllerEvent
 from services.filesystem_profile_source import FilesystemProfileSource
+from services.filesystem_theme_provider import DEFAULT_THEME_NAME, FilesystemThemeProvider
 from services.json_state_store import JsonAppStateStore, JsonHistoryStore
+from services.json_theme_settings_store import JsonThemeSettingsStore
 from services.openfortivpn_backend import OpenfortivpnBackend
 from services.sysfs_tunnel_detector import SysfsTunnelDetector
-from ui.connect_page import CSS, ConnectPage
+from ui.connect_page import ConnectPage
 from ui.formatting import fmt
 from ui.history_page import HistoryPage
 from ui.tray_indicator import TrayIndicator
@@ -35,6 +37,11 @@ class VpnApp(Gtk.Application):
             history_store=JsonHistoryStore(),
         )
 
+        self._theme_provider = FilesystemThemeProvider()
+        self._theme_settings = JsonThemeSettingsStore()
+        self._css_provider: Gtk.CssProvider | None = None
+        self._current_theme: str = DEFAULT_THEME_NAME
+
         self.win: Gtk.ApplicationWindow | None = None
         self._connect_page: ConnectPage | None = None
         self._history_page: HistoryPage | None = None
@@ -45,7 +52,7 @@ class VpnApp(Gtk.Application):
             self.win.present()
             return
 
-        self._apply_css()
+        self._apply_theme(self._theme_settings.load_selected_theme() or DEFAULT_THEME_NAME)
 
         self.win = Gtk.ApplicationWindow(application=self)
         self.win.set_title("OpenFortiVPN")
@@ -101,14 +108,28 @@ class VpnApp(Gtk.Application):
         self.win.show_all()
         GLib.timeout_add_seconds(1, self._tick)
 
-    def _apply_css(self) -> None:
-        provider = Gtk.CssProvider()
-        provider.load_from_data(CSS)
-        Gtk.StyleContext.add_provider_for_screen(
-            Gdk.Screen.get_default(),
-            provider,
-            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
-        )
+    def _resolve_css(self, name: str) -> bytes:
+        try:
+            return self._theme_provider.load_css(name)
+        except (FileNotFoundError, OSError):
+            if name != DEFAULT_THEME_NAME:
+                try:
+                    return self._theme_provider.load_css(DEFAULT_THEME_NAME)
+                except (FileNotFoundError, OSError):
+                    pass
+            return b""
+
+    def _apply_theme(self, name: str) -> None:
+        css_bytes = self._resolve_css(name)
+        if self._css_provider is None:
+            self._css_provider = Gtk.CssProvider()
+            Gtk.StyleContext.add_provider_for_screen(
+                Gdk.Screen.get_default(),
+                self._css_provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+            )
+        self._css_provider.load_from_data(css_bytes)
+        self._current_theme = name
 
     def show_win(self) -> None:
         if self.win is not None:

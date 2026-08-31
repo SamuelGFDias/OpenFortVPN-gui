@@ -7,35 +7,6 @@ from gi.repository import Gtk
 
 from core.models.connection_state import ConnectionState
 
-CSS = b"""
-#connect_button {
-  padding: 12px 20px;
-  font-weight: bold;
-  font-size: 14px;
-  border-radius: 8px;
-}
-#profile_combo {
-  padding: 6px 10px;
-  border-radius: 6px;
-}
-.status-pill {
-  padding: 6px 18px;
-  border-radius: 999px;
-  font-weight: bold;
-  font-size: 13px;
-  color: #ffffff;
-}
-.status-pill.state-connected {
-  background-color: #26a269;
-}
-.status-pill.state-connecting {
-  background-color: #e5a50a;
-}
-.status-pill.state-disconnected {
-  background-color: #a51d2d;
-}
-"""
-
 
 class ConnectPage:
     def __init__(
