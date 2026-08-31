@@ -34,17 +34,8 @@ class TrayIndicator:
         self.menu_status.set_sensitive(False)
         self.menu_time.set_sensitive(False)
 
-        prof_menu = Gtk.Menu()
-        group: list[Gtk.RadioMenuItem] = []
-        for name in self._profiles:
-            item = Gtk.RadioMenuItem.new_with_label(group, name)
-            group = item.get_group()
-            item.connect("activate", self._on_profile_item, name)
-            if name == self._selected_profile:
-                item.set_active(True)
-            prof_menu.append(item)
         self.prof_parent = Gtk.MenuItem(f"VPN: {self._selected_profile or '-'}")
-        self.prof_parent.set_submenu(prof_menu)
+        self.prof_parent.set_submenu(self._build_profile_submenu())
 
         self.menu_toggle = Gtk.MenuItem("Ligar VPN")
         self.menu_toggle.connect("activate", lambda *a: self._on_toggle())
@@ -75,10 +66,31 @@ class TrayIndicator:
         self.ind.set_menu(menu)
         self.ind.set_title("OpenFortiVPN")
 
+    def _build_profile_submenu(self) -> Gtk.Menu:
+        prof_menu = Gtk.Menu()
+        group: list[Gtk.RadioMenuItem] = []
+        for name in self._profiles:
+            item = Gtk.RadioMenuItem.new_with_label(group, name)
+            group = item.get_group()
+            item.connect("activate", self._on_profile_item, name)
+            if name == self._selected_profile:
+                item.set_active(True)
+            prof_menu.append(item)
+        prof_menu.show_all()
+        return prof_menu
+
     def _on_profile_item(self, _item: Gtk.RadioMenuItem, name: str) -> None:
         if name != self._selected_profile:
             self._selected_profile = name
             self._on_profile_selected(name)
+
+    def set_profiles(self, profiles: list[str], selected_profile: str | None) -> None:
+        # Gtk.RadioMenuItem não tem "remover todos": reconstrói o submenu
+        # inteiro sempre que a lista de perfis muda em runtime (issue #6).
+        self._profiles = list(profiles)
+        self._selected_profile = selected_profile
+        self.prof_parent.set_submenu(self._build_profile_submenu())
+        self.prof_parent.set_label(f"VPN: {self._selected_profile or '-'}")
 
     def set_selected_profile(self, name: str | None) -> None:
         # Igual ao update_tray_profile() legado: só atualiza o texto do submenu,

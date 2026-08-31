@@ -79,6 +79,20 @@ class ConnectPage:
     def _on_clicked(self, _btn: Gtk.Button) -> None:
         self._on_button_clicked()
 
+    def set_profiles(self, profiles: list[str], selected_profile: str | None) -> None:
+        # Reconstrói o combo quando a lista de perfis muda em runtime (issue #6).
+        # Bloqueia o handler "changed" durante a reconstrução para não disparar
+        # on_profile_selected espuriamente ao repopular/selecionar.
+        self._profiles = list(profiles)
+        self._selected_profile = selected_profile
+        self.profile_combo.handler_block_by_func(self._on_combo_changed)
+        self.profile_combo.remove_all()
+        for name in self._profiles:
+            self.profile_combo.append_text(name)
+        if self._selected_profile and self._selected_profile in self._profiles:
+            self.profile_combo.set_active(self._profiles.index(self._selected_profile))
+        self.profile_combo.handler_unblock_by_func(self._on_combo_changed)
+
     def set_selected_profile(self, name: str | None) -> None:
         # Mantém o combo em sincronia quando a seleção muda por outra via (ex.: tray),
         # sem reemitir on_profile_selected — igual ao efeito do on_profile_item legado.

@@ -158,6 +158,11 @@ class VpnApp(Gtk.Application):
                     self._notify("Falha ao conectar", "dialog-error")
                 else:
                     self._notify(f"Falha ao conectar — {event.reason}", "dialog-error")
+            elif event.kind == "profiles_changed":
+                if self._connect_page is not None:
+                    self._connect_page.set_profiles(self._controller.profiles, self._controller.selected_profile)
+                if self._tray is not None:
+                    self._tray.set_profiles(self._controller.profiles, self._controller.selected_profile)
 
     def _notify(self, msg: str, icon: str = ICON_ON) -> None:
         subprocess.Popen(

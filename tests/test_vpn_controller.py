@@ -339,3 +339,47 @@ def test_initialize_reattach_sem_sessao_salva_usa_qualquer_interface_presente():
     assert controller.state == ConnectionState.CONNECTED
     assert controller.session is not None
     assert controller.session.iface == "tun0"
+
+
+def test_tick_recarrega_perfis_quando_lista_muda_e_emite_evento():
+    controller, backend, detector, app_state_store, history_store = make_controller(
+        profiles=("a.conf", "b.conf"), last_profile="a.conf"
+    )
+    profile_source = controller._profile_source
+
+    events = controller.tick()
+    assert events == []
+    assert controller.profiles == ["a.conf", "b.conf"]
+
+    profile_source._profiles = ["a.conf", "c.conf"]
+    events = controller.tick()
+
+    assert controller.profiles == ["a.conf", "c.conf"]
+    assert any(e.kind == "profiles_changed" for e in events)
+    # perfil selecionado ainda existe na nova lista: permanece selecionado
+    assert controller.selected_profile == "a.conf"
+
+
+def test_tick_perfil_selecionado_some_da_lista_cai_para_primeiro_disponivel():
+    controller, backend, detector, app_state_store, history_store = make_controller(
+        profiles=("a.conf", "b.conf"), last_profile="a.conf"
+    )
+    profile_source = controller._profile_source
+
+    profile_source._profiles = ["b.conf"]
+    controller.tick()
+
+    assert controller.selected_profile == "b.conf"
+
+
+def test_tick_perfil_selecionado_some_e_lista_fica_vazia_selecionado_none():
+    controller, backend, detector, app_state_store, history_store = make_controller(
+        profiles=("a.conf",), last_profile="a.conf"
+    )
+    profile_source = controller._profile_source
+
+    profile_source._profiles = []
+    controller.tick()
+
+    assert controller.selected_profile is None
+    assert controller.profiles == []
