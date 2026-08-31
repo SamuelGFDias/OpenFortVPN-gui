@@ -19,6 +19,7 @@ class HistoryPage:
 
         self._store = Gtk.ListStore(str, str, str)
         tree = Gtk.TreeView(model=self._store)
+        tree.set_rules_hint(True)
         tree.set_headers_visible(True)
         for title, idx in (("Início", 0), ("VPN", 1), ("Duração", 2)):
             col = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=idx)

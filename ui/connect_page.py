@@ -9,12 +9,30 @@ from core.models.connection_state import ConnectionState
 
 CSS = b"""
 #connect_button {
-  padding: 10px 16px;
+  padding: 12px 20px;
   font-weight: bold;
   font-size: 14px;
+  border-radius: 8px;
 }
 #profile_combo {
-  padding: 4px 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.status-pill {
+  padding: 6px 18px;
+  border-radius: 999px;
+  font-weight: bold;
+  font-size: 13px;
+  color: #ffffff;
+}
+.status-pill.state-connected {
+  background-color: #26a269;
+}
+.status-pill.state-connecting {
+  background-color: #e5a50a;
+}
+.status-pill.state-disconnected {
+  background-color: #a51d2d;
 }
 """
 
@@ -32,11 +50,11 @@ class ConnectPage:
         self._on_profile_selected = on_profile_selected
         self._on_button_clicked = on_button_clicked
 
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
-        box.set_margin_top(16)
-        box.set_margin_bottom(16)
-        box.set_margin_start(24)
-        box.set_margin_end(24)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
+        box.set_margin_top(20)
+        box.set_margin_bottom(20)
+        box.set_margin_start(28)
+        box.set_margin_end(28)
 
         prof_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         prof_lbl = Gtk.Label("VPN:")
@@ -52,6 +70,7 @@ class ConnectPage:
         box.pack_start(prof_box, False, False, 0)
 
         self.status = Gtk.Label(halign=Gtk.Align.CENTER)
+        self.status.get_style_context().add_class("status-pill")
         box.pack_start(self.status, False, False, 0)
 
         self.spinner = Gtk.Spinner()
@@ -60,6 +79,7 @@ class ConnectPage:
         box.pack_start(self.spinner, False, False, 0)
 
         self.time_label = Gtk.Label(halign=Gtk.Align.CENTER)
+        self.time_label.get_style_context().add_class("dim-label")
         box.pack_start(self.time_label, False, False, 0)
 
         self.btn = Gtk.Button(label="Ligar VPN")
@@ -114,29 +134,35 @@ class ConnectPage:
         if not has_profiles:
             self.btn.set_sensitive(False)
 
+        status_ctx = self.status.get_style_context()
+        for cls in ("state-connecting", "state-connected", "state-disconnected"):
+            status_ctx.remove_class(cls)
+
+        btn_ctx = self.btn.get_style_context()
+        btn_ctx.remove_class("suggested-action")
+        btn_ctx.remove_class("destructive-action")
+
         if state == ConnectionState.CONNECTING:
-            self.status.set_markup(
-                '<span size="x-large" weight="bold" foreground="#e5a50a">Conectando…</span>'
-            )
-            self.time_label.set_markup('<span size="large">Estabelecendo túnel…</span>')
+            self.status.set_text("Conectando…")
+            status_ctx.add_class("state-connecting")
+            self.time_label.set_text("Estabelecendo túnel…")
             self.btn.set_label("Cancelar")
+            btn_ctx.add_class("destructive-action")
             self.spinner.set_visible(True)
             self.spinner.start()
         elif state == ConnectionState.CONNECTED:
-            self.status.set_markup(
-                '<span size="x-large" weight="bold" foreground="#26a269">Conectado</span>'
-            )
-            self.time_label.set_markup(
-                f'<span size="large">Tempo de conexão: {elapsed_text}</span>'
-            )
+            self.status.set_text("Conectado")
+            status_ctx.add_class("state-connected")
+            self.time_label.set_text(f"Tempo de conexão: {elapsed_text}")
             self.btn.set_label("Desligar VPN")
+            btn_ctx.add_class("destructive-action")
             self.spinner.stop()
             self.spinner.set_visible(False)
         else:
-            self.status.set_markup(
-                '<span size="x-large" weight="bold" foreground="#a51d2d">Desconectado</span>'
-            )
-            self.time_label.set_markup('<span size="large"> </span>')
+            self.status.set_text("Desconectado")
+            status_ctx.add_class("state-disconnected")
+            self.time_label.set_text(" ")
             self.btn.set_label("Ligar VPN")
+            btn_ctx.add_class("suggested-action")
             self.spinner.stop()
             self.spinner.set_visible(False)
