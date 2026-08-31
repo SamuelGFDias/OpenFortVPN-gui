@@ -1,0 +1,2 @@
+# GTK3, AppIndicator3 e PyGObject vêm do gerenciador de pacotes do SO, não do pip.
+# Sem dependências de runtime via pip por enquanto.
