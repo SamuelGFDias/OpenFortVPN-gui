@@ -103,3 +103,11 @@ com ícone por perfil).
 - Suíte de testes roda com `python3 -m pytest tests/` (instalar `requirements/dev.txt` antes).
 - Mensagens de UI e notificações são em português (usuário final é PT-BR).
 - Commits e PRs neste repo não levam rodapé de atribuição de IA.
+
+## Renderização headless para inspeção visual
+
+`dev/render_smoke.sh [saida.png] [--page connect|history]` sobe um Xvfb (ou reusa um `DISPLAY`
+já existente via `xvfb-run`, se disponível), ativa a `VpnApp` real com
+`application_id="local.openfortivpn.gui.dev"` (não colide com uma instância de produção) e
+salva um screenshot PNG da janela principal. Não conecta nenhuma VPN de verdade — só renderiza
+a UI. Útil para verificar mudanças de CSS/layout sem precisar de display físico.
