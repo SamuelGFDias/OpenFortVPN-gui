@@ -3,9 +3,14 @@ from typing import Callable
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import GdkPixbuf, Gtk
 
 from core.models.connection_state import ConnectionState
+from ui.icons import load_profile_pixbuf
+
+COL_NAME = 0
+COL_ICON = 1
 
 
 class ConnectPage:
@@ -13,13 +18,19 @@ class ConnectPage:
         self,
         profiles: list[str],
         selected_profile: str | None,
+        profile_icons: dict[str, str],
         on_profile_selected: Callable[[str], None],
         on_button_clicked: Callable[[], None],
+        on_new_profile: Callable[[], None],
+        on_edit_profile: Callable[[], None],
     ) -> None:
         self._profiles = list(profiles)
         self._selected_profile = selected_profile
+        self._profile_icons = dict(profile_icons)
         self._on_profile_selected = on_profile_selected
         self._on_button_clicked = on_button_clicked
+        self._on_new_profile = on_new_profile
+        self._on_edit_profile = on_edit_profile
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
         box.set_margin_top(20)
@@ -30,14 +41,32 @@ class ConnectPage:
         prof_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         prof_lbl = Gtk.Label("VPN:")
         prof_box.pack_start(prof_lbl, False, False, 0)
-        self.profile_combo = Gtk.ComboBoxText()
+
+        self._profile_store = Gtk.ListStore(str, GdkPixbuf.Pixbuf)
+        self.profile_combo = Gtk.ComboBox.new_with_model(self._profile_store)
         self.profile_combo.set_name("profile_combo")
-        for name in self._profiles:
-            self.profile_combo.append_text(name)
-        if self._selected_profile and self._selected_profile in self._profiles:
-            self.profile_combo.set_active(self._profiles.index(self._selected_profile))
+        icon_renderer = Gtk.CellRendererPixbuf()
+        self.profile_combo.pack_start(icon_renderer, False)
+        self.profile_combo.add_attribute(icon_renderer, "pixbuf", COL_ICON)
+        text_renderer = Gtk.CellRendererText()
+        self.profile_combo.pack_start(text_renderer, True)
+        self.profile_combo.add_attribute(text_renderer, "text", COL_NAME)
+        self._populate_store()
         self.profile_combo.connect("changed", self._on_combo_changed)
         prof_box.pack_start(self.profile_combo, True, True, 0)
+
+        self.edit_profile_btn = Gtk.Button(label="✎")
+        self.edit_profile_btn.set_name("edit_profile_button")
+        self.edit_profile_btn.set_tooltip_text("Editar perfil selecionado")
+        self.edit_profile_btn.connect("clicked", lambda *_a: self._on_edit_profile())
+        prof_box.pack_start(self.edit_profile_btn, False, False, 0)
+
+        self.new_profile_btn = Gtk.Button(label="+")
+        self.new_profile_btn.set_name("new_profile_button")
+        self.new_profile_btn.set_tooltip_text("Novo perfil VPN")
+        self.new_profile_btn.connect("clicked", lambda *_a: self._on_new_profile())
+        prof_box.pack_start(self.new_profile_btn, False, False, 0)
+
         box.pack_start(prof_box, False, False, 0)
 
         self.status = Gtk.Label(halign=Gtk.Align.CENTER)
@@ -61,8 +90,22 @@ class ConnectPage:
 
         self.widget = box
 
-    def _on_combo_changed(self, combo: Gtk.ComboBoxText) -> None:
-        name = combo.get_active_text()
+    def _populate_store(self) -> None:
+        self._profile_store.clear()
+        active_index = -1
+        for i, name in enumerate(self._profiles):
+            pixbuf = load_profile_pixbuf(self._profile_icons.get(name))
+            self._profile_store.append([name, pixbuf])
+            if name == self._selected_profile:
+                active_index = i
+        if active_index >= 0:
+            self.profile_combo.set_active(active_index)
+
+    def _on_combo_changed(self, combo: Gtk.ComboBox) -> None:
+        it = combo.get_active_iter()
+        if it is None:
+            return
+        name = self._profile_store[it][COL_NAME]
         if name and name != self._selected_profile:
             self._selected_profile = name
             self._on_profile_selected(name)
@@ -70,18 +113,17 @@ class ConnectPage:
     def _on_clicked(self, _btn: Gtk.Button) -> None:
         self._on_button_clicked()
 
-    def set_profiles(self, profiles: list[str], selected_profile: str | None) -> None:
+    def set_profiles(
+        self, profiles: list[str], selected_profile: str | None, profile_icons: dict[str, str]
+    ) -> None:
         # Reconstrói o combo quando a lista de perfis muda em runtime (issue #6).
         # Bloqueia o handler "changed" durante a reconstrução para não disparar
         # on_profile_selected espuriamente ao repopular/selecionar.
         self._profiles = list(profiles)
         self._selected_profile = selected_profile
+        self._profile_icons = dict(profile_icons)
         self.profile_combo.handler_block_by_func(self._on_combo_changed)
-        self.profile_combo.remove_all()
-        for name in self._profiles:
-            self.profile_combo.append_text(name)
-        if self._selected_profile and self._selected_profile in self._profiles:
-            self.profile_combo.set_active(self._profiles.index(self._selected_profile))
+        self._populate_store()
         self.profile_combo.handler_unblock_by_func(self._on_combo_changed)
 
     def set_selected_profile(self, name: str | None) -> None:

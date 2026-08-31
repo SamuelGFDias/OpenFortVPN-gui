@@ -1,4 +1,3 @@
-import os
 import time
 
 from core.interfaces.profile_source import ProfileSource
@@ -21,14 +20,12 @@ class VpnController:
         profile_source: ProfileSource,
         app_state_store: AppStateStore,
         history_store: HistoryStore,
-        profile_dir: str = "/etc/openfortivpn",
     ) -> None:
         self._backend = backend
         self._detector = detector
         self._profile_source = profile_source
         self._app_state_store = app_state_store
         self._history_store = history_store
-        self._profile_dir = profile_dir
 
         self._profiles = self._profile_source.list_profiles()
         last = self._app_state_store.load_last_profile()
@@ -89,7 +86,7 @@ class VpnController:
             return [ControllerEvent(kind="connect_failed", reason="Nenhum perfil de VPN configurado")]
         self._app_state_store.save_last_profile(self._selected_profile)
         self._pending_baseline = self._detector.snapshot()
-        profile_path = os.path.join(self._profile_dir, self._selected_profile)
+        profile_path = self._profile_source.resolve_path(self._selected_profile)
         pid = self._backend.start(profile_path)
         self._session = ConnectionSession(profile=self._selected_profile, pid=pid)
         self._state = ConnectionState.CONNECTING
@@ -116,18 +113,25 @@ class VpnController:
         self._app_state_store.clear_active_session()
         return events
 
-    def tick(self) -> list[ControllerEvent]:
+    def refresh_profiles(self) -> list[ControllerEvent]:
+        # Permite que a UI force a releitura imediata dos perfis (ex.: logo
+        # após criar um novo perfil pela GUI), sem esperar o próximo tick().
         events: list[ControllerEvent] = []
-        now = time.time()
-        if now < self._stopping_until:
-            return events
-
         new_profiles = self._profile_source.list_profiles()
         if new_profiles != self._profiles:
             self._profiles = new_profiles
             if self._selected_profile not in self._profiles:
                 self._selected_profile = self._profiles[0] if self._profiles else None
             events.append(ControllerEvent(kind="profiles_changed"))
+        return events
+
+    def tick(self) -> list[ControllerEvent]:
+        events: list[ControllerEvent] = []
+        now = time.time()
+        if now < self._stopping_until:
+            return events
+
+        events.extend(self.refresh_profiles())
 
         pid = self._session.pid if self._session else None
         running = self._backend.is_running(pid)

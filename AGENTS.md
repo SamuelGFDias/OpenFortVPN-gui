@@ -15,23 +15,42 @@ interna sim.
   próprio arquivo, `from ui.application import VpnApp` e `app.run(None)`. Não tem lógica própria.
 - `core/interfaces/` — contratos ABC que desacoplam o controller de implementação concreta:
   `VpnBackend` (iniciar/parar o processo openfortivpn), `TunnelStateDetector` (detectar
-  interface de túnel ativa), `ProfileSource` (listar perfis disponíveis), `AppStateStore` e
-  `HistoryStore` (persistência de estado da app e de histórico de sessões).
+  interface de túnel ativa), `ProfileSource` (listar perfis disponíveis, resolver o caminho
+  completo de um perfil pelo nome — `resolve_path()` — e indicar se é editável pela GUI —
+  `is_user_profile()`), `ProfileWriter` (persistir o conteúdo de um perfil criado/editado pela
+  GUI), `ProfileIconStore` (associar ícone a perfil), `AppStateStore` e `HistoryStore`
+  (persistência de estado da app e de histórico de sessões).
 - `core/models/` — dataclasses de domínio, sem dependência de GTK: `ConnectionState` (Enum:
   `DISCONNECTED`/`CONNECTING`/`CONNECTED`), `ConnectionSession`, `HistoryRecord`,
   `ConnectOutcome`, `ControllerEvent`.
 - `services/` — implementações concretas dos contratos: `OpenfortivpnBackend`,
-  `SysfsTunnelDetector`, `FilesystemProfileSource`, `JsonAppStateStore` + `JsonHistoryStore`,
-  `CommandRunner` (Protocol para execução de comandos, permite dublê em teste),
-  `runtime_paths.resolve_runtime_dir()` (resolve o diretório de runtime da app).
+  `SysfsTunnelDetector`, `FilesystemProfileSource` (mescla perfis administrados em
+  `/etc/openfortivpn` com perfis criados pela GUI em `~/.config/openfortivpn-gui/profiles/`;
+  em colisão de nome, o perfil administrado tem prioridade), `FilesystemProfileWriter` (só
+  escreve no diretório de perfis do usuário — nunca em `/etc/openfortivpn`, que permanece
+  somente-leitura pela GUI), `JsonProfileIconStore` (mapa perfil → ícone, em
+  `~/.config/openfortivpn-gui/profile_icons.json`), `profile_config.py` (funções puras:
+  `validate_new_profile()`, `sanitize_profile_filename()`, `build_profile_config()`,
+  `parse_profile_config()` (lê um `.conf` existente de volta para campos, usado ao abrir o
+  diálogo em modo edição e para preservar campos desconhecidos como `trusted-cert` num
+  round-trip) — regra de negócio de criação/edição de perfil, sem GTK, totalmente testável),
+  `JsonAppStateStore` + `JsonHistoryStore`, `CommandRunner` (Protocol para execução de comandos,
+  permite dublê em teste), `runtime_paths.py` (`resolve_runtime_dir()` e
+  `resolve_user_profile_dir()`).
 - `controller/vpn_controller.py` — `VpnController`: máquina de estados pura (sem GTK), orquestra
-  os 5 contratos acima e expõe `tick()` para a UI consumir.
+  os contratos acima e expõe `tick()` para a UI consumir. `refresh_profiles()` expõe a mesma
+  releitura de perfis que `tick()` faz periodicamente, mas sob demanda — usada pela UI logo após
+  criar um perfil pela GUI, para não esperar o próximo tick (issue #7).
 - `ui/` — camada GTK/AppIndicator: `application.py` (`VpnApp(Gtk.Application)`, monta e injeta as
   implementações concretas de `services/` no `VpnController`), `connect_page.py`,
-  `history_page.py`, `tray_indicator.py`, `formatting.py`.
-- `tests/` — suíte pytest (64 testes) cobrindo `core/models`, `services` e `controller` com
+  `history_page.py`, `tray_indicator.py`, `formatting.py`, `icons.py` (resolve nome de ícone do
+  tema ou caminho de arquivo para `GdkPixbuf.Pixbuf`, com fallback para ícone padrão
+  `network-vpn`), `profile_dialog.py` (`Gtk.Dialog` de criação/edição de perfil: nome, host,
+  porta, usuário, senha e ícone opcional via `Gtk.FileChooserButton`; em modo edição o campo
+  nome fica travado e os demais vêm pré-preenchidos a partir do `.conf` existente).
+- `tests/` — suíte pytest (103 testes) cobrindo `core/models`, `services` e `controller` com
   fakes/dublês (via `CommandRunner` e os contratos ABC). A camada `ui/` (GTK/AppIndicator) não é
-  testada automaticamente — validação é por smoke test manual.
+  testada automaticamente — validação é por smoke test manual (`dev/render_smoke.sh`).
 - `requirements.txt` (dependências de runtime) / `requirements/dev.txt` (+ pytest) / `pytest.ini`.
 - `README.md` — instalação e uso.
 - Instalado via symlink em `~/.local/bin/openfortivpn-gui` (fora deste repo, não versionado).
@@ -59,14 +78,38 @@ interna sim.
   decisão deliberada para não travar a UI single-thread do GTK.
 - Diagnóstico de falha ao conectar inclui exit code e motivo, reportados na UI (issue #5,
   corrigida) — antes só existiam no log.
-- Perfis de VPN vêm de `/etc/openfortivpn/` (arquivo `config` ou `*.conf`) e são recarregados a
-  cada `tick()` via `ProfileSource` — perfil adicionado/removido pelo admin aparece sem reiniciar
-  o app (issue #6, corrigida).
+- Perfis de VPN vêm da mescla de `/etc/openfortivpn/` (administrado, somente-leitura pela GUI) e
+  `~/.config/openfortivpn-gui/profiles/` (criados pela própria GUI) — arquivos `config` ou
+  `*.conf` em qualquer um dos dois, recarregados a cada `tick()` via `ProfileSource` — perfil
+  adicionado/removido por qualquer via aparece sem reiniciar o app (issue #6, corrigida).
+- Criar perfil pela GUI (issue #7, corrigida) é feito só em `~/.config/openfortivpn-gui/profiles/`
+  — deliberadamente nunca em `/etc/openfortivpn/`, para não exigir escrita privilegiada
+  (`sudo tee` ou equivalente) nem risco de senha interativa. `openfortivpn -c <caminho>` aceita
+  qualquer caminho, e o processo já roda via `sudo -n`, que consegue ler o arquivo do usuário
+  normalmente — não há necessidade de mover o perfil para `/etc`. Ao salvar, a UI chama
+  `VpnController.refresh_profiles()` para o novo perfil aparecer imediatamente no combo da janela
+  e no submenu da bandeja, sem esperar o próximo `tick()`.
+- Editar perfil (botão "✎" na janela / "Editar perfil selecionado…" na bandeja) só é permitido
+  para perfis em `~/.config/openfortivpn-gui/profiles/` (`ProfileSource.is_user_profile()`);
+  tentar editar um perfil administrado em `/etc/openfortivpn/` mostra uma notificação e não abre
+  o diálogo. O nome do perfil não pode ser alterado na edição (evitaria ter que mover arquivo,
+  atualizar último perfil selecionado, histórico etc. — fora do escopo). Campos do `.conf` que a
+  UI não edita diretamente (ex.: `trusted-cert`) são preservados via
+  `profile_config.parse_profile_config()`/`build_profile_config(..., extra=...)`.
+- Ícone por perfil (issue #7) é resolvido por `ui/icons.load_profile_pixbuf()`: se o valor salvo
+  em `ProfileIconStore` começa com `/`, é tratado como caminho de arquivo de imagem; caso
+  contrário, como nome de ícone do tema GTK ativo. Sem valor configurado, ou em caso de falha ao
+  carregar, cai no ícone padrão `network-vpn`.
 - Persistência de estado do app (não da VPN em si), via `services/runtime_paths.py`:
   - `~/.config/openfortivpn-gui/state.json` — último perfil usado e interface de reattach
     (`JsonAppStateStore`).
   - `~/.config/openfortivpn-gui/history.json` — histórico de sessões, com purga automática de
     registros com mais de 7 dias (`JsonHistoryStore`).
+  - `~/.config/openfortivpn-gui/profiles/` — perfis de VPN criados pela GUI (`.conf`, modo
+    `0600`, diretório `0700` — contêm senha em texto plano, mesmo formato usado pelo próprio
+    openfortivpn em `/etc/openfortivpn/`).
+  - `~/.config/openfortivpn-gui/profile_icons.json` — mapa nome do perfil → ícone
+    (`JsonProfileIconStore`).
   - `$XDG_RUNTIME_DIR/openfortivpn-gui/` (fallback `~/.cache/openfortivpn-gui/` se
     `XDG_RUNTIME_DIR` não estiver definido) — log (stdout/stderr do processo `openfortivpn`
     lançado via `sudo`) e marcador de sessão ativa (timestamp de início, para recalcular o tempo
@@ -85,7 +128,7 @@ interna sim.
 
 ## Limitações conhecidas
 
-As 6 limitações originais (issues #1–#6) foram corrigidas na refatoração modular — ver
+As 7 issues originais (#1–#7) foram corrigidas/implementadas na refatoração modular — ver
 "Arquitetura / fluxo" acima para o que mudou em cada caso. Limitações residuais aceitas
 deliberadamente:
 
@@ -94,9 +137,16 @@ deliberadamente:
 2. Reattach sem sessão salva com interface conhecida ainda usa como último recurso a heurística
    "qualquer `tun*`/`ppp*` presente", com o mesmo risco de falso positivo por túnel concorrente
    que o baseline resolve no caso normal.
-
-Próximo trabalho planejado: issue #7 (permitir configurar novos perfis de VPN pela interface,
-com ícone por perfil).
+3. O submenu de perfis da bandeja usa `Gtk.ImageMenuItem` (obsoleto no GTK3, mas funcional) para
+   mostrar ícone por item — não há indicador de rádio nativo, o perfil selecionado é marcado por
+   prefixo "●" no rótulo; o submenu só é reconstruído quando a seleção muda de fato (não a cada
+   tick), para não recriar o menu inteiro a cada segundo.
+4. O diálogo de criação/edição de perfil (`ui/profile_dialog.py`) cobre os campos essenciais do
+   openfortivpn (host, porta, usuário, senha) — campos avançados do formato de config (ex.:
+   `trusted-cert`, `otp`) não têm UI dedicada; ao editar um perfil que já os tenha, eles são
+   preservados no arquivo, mas quem precisar criá-los do zero ainda edita o `.conf` manualmente.
+5. Perfis administrados em `/etc/openfortivpn/` não podem ser editados nem renomeados pela GUI —
+   só perfis criados por ela mesma, em `~/.config/openfortivpn-gui/profiles/`.
 
 ## Convenções
 

@@ -11,14 +11,23 @@ from controller.vpn_controller import VpnController
 from core.models.connection_state import ConnectionState
 from core.models.controller_event import ControllerEvent
 from services.filesystem_profile_source import FilesystemProfileSource
+from services.filesystem_profile_writer import FilesystemProfileWriter
 from services.filesystem_theme_provider import DEFAULT_THEME_NAME, FilesystemThemeProvider
+from services.json_profile_icon_store import JsonProfileIconStore
 from services.json_state_store import JsonAppStateStore, JsonHistoryStore
 from services.json_theme_settings_store import JsonThemeSettingsStore
 from services.openfortivpn_backend import OpenfortivpnBackend
+from services.profile_config import (
+    build_profile_config,
+    parse_profile_config,
+    sanitize_profile_filename,
+    validate_new_profile,
+)
 from services.sysfs_tunnel_detector import SysfsTunnelDetector
 from ui.connect_page import ConnectPage
 from ui.formatting import fmt
 from ui.history_page import HistoryPage
+from ui.profile_dialog import ProfileDialog
 from ui.tray_indicator import TrayIndicator
 
 ICON_ON = "network-vpn"
@@ -29,10 +38,11 @@ class VpnApp(Gtk.Application):
     def __init__(self, application_id: str = "local.openfortivpn.gui") -> None:
         super().__init__(application_id=application_id)
 
+        self._profile_source = FilesystemProfileSource()
         self._controller = VpnController(
             backend=OpenfortivpnBackend(),
             detector=SysfsTunnelDetector(),
-            profile_source=FilesystemProfileSource(),
+            profile_source=self._profile_source,
             app_state_store=JsonAppStateStore(),
             history_store=JsonHistoryStore(),
         )
@@ -41,6 +51,10 @@ class VpnApp(Gtk.Application):
         self._theme_settings = JsonThemeSettingsStore()
         self._css_provider: Gtk.CssProvider | None = None
         self._current_theme: str = DEFAULT_THEME_NAME
+
+        self._profile_writer = FilesystemProfileWriter()
+        self._profile_icon_store = JsonProfileIconStore()
+        self._profile_icons: dict[str, str] = {}
 
         self.win: Gtk.ApplicationWindow | None = None
         self._connect_page: ConnectPage | None = None
@@ -81,11 +95,16 @@ class VpnApp(Gtk.Application):
         root.pack_start(switcher, False, False, 0)
         root.pack_start(stack, True, True, 0)
 
+        self._profile_icons = self._profile_icon_store.load_all()
+
         self._connect_page = ConnectPage(
             profiles=self._controller.profiles,
             selected_profile=self._controller.selected_profile,
+            profile_icons=self._profile_icons,
             on_profile_selected=self._on_profile_selected,
             on_button_clicked=self._on_button_clicked,
+            on_new_profile=self._on_new_profile_requested,
+            on_edit_profile=self._on_edit_profile_requested,
         )
         self._history_page = HistoryPage()
 
@@ -95,10 +114,13 @@ class VpnApp(Gtk.Application):
         self._tray = TrayIndicator(
             profiles=self._controller.profiles,
             selected_profile=self._controller.selected_profile,
+            profile_icons=self._profile_icons,
             on_toggle=self._on_button_clicked,
             on_show=self.show_win,
             on_quit=self.on_quit,
             on_profile_selected=self._on_profile_selected,
+            on_new_profile=self._on_new_profile_requested,
+            on_edit_profile=self._on_edit_profile_requested,
             themes=self._theme_provider.list_themes(),
             selected_theme=self._current_theme,
             on_theme_selected=self._on_theme_selected,
@@ -156,6 +178,112 @@ class VpnApp(Gtk.Application):
         self._apply_theme(name)
         self._theme_settings.save_selected_theme(name)
 
+    def _on_new_profile_requested(self) -> None:
+        dialog = ProfileDialog(self.win)
+        try:
+            while True:
+                response = dialog.run()
+                if response != Gtk.ResponseType.OK:
+                    return
+                values = dialog.get_values()
+                error = validate_new_profile(
+                    values["name"], values["host"], values["port"], self._controller.profiles
+                )
+                if error:
+                    dialog.show_error(error)
+                    continue
+
+                filename = sanitize_profile_filename(values["name"])
+                content = build_profile_config(
+                    host=values["host"],
+                    port=values["port"],
+                    username=values["username"],
+                    password=values["password"],
+                )
+                self._profile_writer.save_profile(filename, content)
+                if values["icon"]:
+                    self._profile_icon_store.save_icon(filename, values["icon"])
+                self._profile_icons = self._profile_icon_store.load_all()
+
+                self._handle_events(self._controller.refresh_profiles())
+                self._controller.select_profile(filename)
+                self._render()
+                return
+        finally:
+            dialog.destroy()
+
+    def _on_edit_profile_requested(self) -> None:
+        name = self._controller.selected_profile
+        if not name:
+            return
+        if not self._profile_source.is_user_profile(name):
+            self._notify(
+                "Perfil administrado pelo sistema — não pode ser editado pela GUI",
+                "dialog-information",
+            )
+            return
+
+        path = self._profile_source.resolve_path(name)
+        try:
+            with open(path) as f:
+                content = f.read()
+        except OSError:
+            content = ""
+        fields = parse_profile_config(content)
+
+        existing = {
+            "name": name,
+            "host": fields.get("host", ""),
+            "port": fields.get("port", ""),
+            "username": fields.get("username", ""),
+            "password": fields.get("password", ""),
+            "icon": self._profile_icons.get(name),
+        }
+
+        dialog = ProfileDialog(self.win, existing=existing)
+        try:
+            while True:
+                response = dialog.run()
+                if response != Gtk.ResponseType.OK:
+                    return
+                values = dialog.get_values()
+                error = validate_new_profile(
+                    values["name"],
+                    values["host"],
+                    values["port"],
+                    self._controller.profiles,
+                    editing_name=name,
+                )
+                if error:
+                    dialog.show_error(error)
+                    continue
+
+                content = build_profile_config(
+                    host=values["host"],
+                    port=values["port"],
+                    username=values["username"],
+                    password=values["password"],
+                    extra=fields,
+                )
+                self._profile_writer.save_profile(name, content)
+                if values["icon"]:
+                    self._profile_icon_store.save_icon(name, values["icon"])
+                    self._profile_icons = self._profile_icon_store.load_all()
+                    # Nome do perfil não muda ao editar — sem evento "profiles_changed" — mas
+                    # o ícone pode ter mudado: repopula os widgets para refleti-lo.
+                    if self._connect_page is not None:
+                        self._connect_page.set_profiles(
+                            self._controller.profiles, self._controller.selected_profile, self._profile_icons
+                        )
+                    if self._tray is not None:
+                        self._tray.set_profiles(
+                            self._controller.profiles, self._controller.selected_profile, self._profile_icons
+                        )
+                self._render()
+                return
+        finally:
+            dialog.destroy()
+
     def _on_button_clicked(self) -> None:
         if self._controller.state in (ConnectionState.CONNECTING, ConnectionState.CONNECTED):
             events = self._controller.stop_connection()
@@ -189,9 +317,13 @@ class VpnApp(Gtk.Application):
                     self._notify(f"Falha ao conectar — {event.reason}", "dialog-error")
             elif event.kind == "profiles_changed":
                 if self._connect_page is not None:
-                    self._connect_page.set_profiles(self._controller.profiles, self._controller.selected_profile)
+                    self._connect_page.set_profiles(
+                        self._controller.profiles, self._controller.selected_profile, self._profile_icons
+                    )
                 if self._tray is not None:
-                    self._tray.set_profiles(self._controller.profiles, self._controller.selected_profile)
+                    self._tray.set_profiles(
+                        self._controller.profiles, self._controller.selected_profile, self._profile_icons
+                    )
 
     def _notify(self, msg: str, icon: str = ICON_ON) -> None:
         subprocess.Popen(

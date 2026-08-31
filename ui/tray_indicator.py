@@ -7,6 +7,7 @@ gi.require_version("AppIndicator3", "0.1")
 from gi.repository import AppIndicator3, Gtk
 
 from core.models.connection_state import ConnectionState
+from ui.icons import load_profile_pixbuf
 
 ICON_ON = "network-vpn"
 ICON_OFF = "network-offline"
@@ -17,20 +18,26 @@ class TrayIndicator:
         self,
         profiles: list[str],
         selected_profile: str | None,
+        profile_icons: dict[str, str],
         on_toggle: Callable[[], None],
         on_show: Callable[[], None],
         on_quit: Callable[[], None],
         on_profile_selected: Callable[[str], None],
+        on_new_profile: Callable[[], None],
+        on_edit_profile: Callable[[], None],
         themes: list[str] | None = None,
         selected_theme: str | None = None,
         on_theme_selected: Callable[[str], None] | None = None,
     ) -> None:
         self._profiles = list(profiles)
         self._selected_profile = selected_profile
+        self._profile_icons = dict(profile_icons)
         self._on_toggle = on_toggle
         self._on_show = on_show
         self._on_quit = on_quit
         self._on_profile_selected = on_profile_selected
+        self._on_new_profile = on_new_profile
+        self._on_edit_profile = on_edit_profile
         self._themes = list(themes or [])
         self._selected_theme = selected_theme
         self._on_theme_selected = on_theme_selected
@@ -78,27 +85,40 @@ class TrayIndicator:
 
     def _build_profile_submenu(self) -> Gtk.Menu:
         prof_menu = Gtk.Menu()
-        group: list[Gtk.RadioMenuItem] = []
         for name in self._profiles:
-            item = Gtk.RadioMenuItem.new_with_label(group, name)
-            group = item.get_group()
+            label = f"● {name}" if name == self._selected_profile else name
+            item = Gtk.ImageMenuItem(label=label)
+            pixbuf = load_profile_pixbuf(self._profile_icons.get(name))
+            if pixbuf is not None:
+                item.set_image(Gtk.Image.new_from_pixbuf(pixbuf))
+                item.set_always_show_image(True)
             item.connect("activate", self._on_profile_item, name)
-            if name == self._selected_profile:
-                item.set_active(True)
             prof_menu.append(item)
+        if self._profiles:
+            prof_menu.append(Gtk.SeparatorMenuItem())
+        if self._selected_profile:
+            edit_item = Gtk.MenuItem("Editar perfil selecionado…")
+            edit_item.connect("activate", lambda *a: self._on_edit_profile())
+            prof_menu.append(edit_item)
+        new_item = Gtk.MenuItem("Novo perfil…")
+        new_item.connect("activate", lambda *a: self._on_new_profile())
+        prof_menu.append(new_item)
         prof_menu.show_all()
         return prof_menu
 
-    def _on_profile_item(self, _item: Gtk.RadioMenuItem, name: str) -> None:
+    def _on_profile_item(self, _item: Gtk.ImageMenuItem, name: str) -> None:
         if name != self._selected_profile:
             self._selected_profile = name
             self._on_profile_selected(name)
 
-    def set_profiles(self, profiles: list[str], selected_profile: str | None) -> None:
+    def set_profiles(
+        self, profiles: list[str], selected_profile: str | None, profile_icons: dict[str, str]
+    ) -> None:
         # Gtk.RadioMenuItem não tem "remover todos": reconstrói o submenu
         # inteiro sempre que a lista de perfis muda em runtime (issue #6).
         self._profiles = list(profiles)
         self._selected_profile = selected_profile
+        self._profile_icons = dict(profile_icons)
         self.prof_parent.set_submenu(self._build_profile_submenu())
         self.prof_parent.set_label(f"VPN: {self._selected_profile or '-'}")
 
@@ -127,11 +147,16 @@ class TrayIndicator:
         self.theme_parent.set_label(f"Tema: {self._selected_theme or '-'}")
 
     def set_selected_profile(self, name: str | None) -> None:
-        # Igual ao update_tray_profile() legado: só atualiza o texto do submenu,
-        # sem reconstruir os radio items.
+        # render() chama isto a cada tick (1s): só reconstrói o submenu quando a
+        # seleção realmente muda, para atualizar o marcador (●) sem recriar o
+        # menu inteiro (Gtk.ImageMenuItem não tem estado de rádio nativo) a
+        # cada segundo.
+        changed = name != self._selected_profile
         self._selected_profile = name
         if self.prof_parent:
             self.prof_parent.set_label(f"VPN: {name or '-'}")
+            if changed:
+                self.prof_parent.set_submenu(self._build_profile_submenu())
 
     def render(self, *, state: ConnectionState, elapsed_text: str) -> None:
         if state == ConnectionState.CONNECTING:

@@ -62,6 +62,12 @@ class FakeProfileSource(ProfileSource):
     def list_profiles(self) -> list[str]:
         return list(self._profiles)
 
+    def resolve_path(self, name: str) -> str:
+        return f"/etc/openfortivpn/{name}"
+
+    def is_user_profile(self, name: str) -> bool:
+        return False
+
 
 class FakeAppStateStore(AppStateStore):
     def __init__(self, last_profile=None, active_session=None):
@@ -383,3 +389,36 @@ def test_tick_perfil_selecionado_some_e_lista_fica_vazia_selecionado_none():
 
     assert controller.selected_profile is None
     assert controller.profiles == []
+
+
+def test_refresh_profiles_reflete_perfil_recem_criado_sem_esperar_tick():
+    controller, backend, detector, app_state_store, history_store = make_controller(
+        profiles=("a.conf",), last_profile="a.conf"
+    )
+    profile_source = controller._profile_source
+
+    profile_source._profiles = ["a.conf", "novo.conf"]
+    events = controller.refresh_profiles()
+
+    assert controller.profiles == ["a.conf", "novo.conf"]
+    assert any(e.kind == "profiles_changed" for e in events)
+
+
+def test_refresh_profiles_sem_mudanca_nao_emite_evento():
+    controller, backend, detector, app_state_store, history_store = make_controller(
+        profiles=("a.conf",), last_profile="a.conf"
+    )
+
+    events = controller.refresh_profiles()
+
+    assert events == []
+
+
+def test_start_connection_usa_resolve_path_do_profile_source():
+    controller, backend, detector, app_state_store, history_store = make_controller(
+        profiles=("matriz.conf",)
+    )
+
+    controller.start_connection()
+
+    assert backend.start_calls == ["/etc/openfortivpn/matriz.conf"]
