@@ -21,6 +21,9 @@ class TrayIndicator:
         on_show: Callable[[], None],
         on_quit: Callable[[], None],
         on_profile_selected: Callable[[str], None],
+        themes: list[str] | None = None,
+        selected_theme: str | None = None,
+        on_theme_selected: Callable[[str], None] | None = None,
     ) -> None:
         self._profiles = list(profiles)
         self._selected_profile = selected_profile
@@ -28,6 +31,9 @@ class TrayIndicator:
         self._on_show = on_show
         self._on_quit = on_quit
         self._on_profile_selected = on_profile_selected
+        self._themes = list(themes or [])
+        self._selected_theme = selected_theme
+        self._on_theme_selected = on_theme_selected
 
         self.menu_status = Gtk.MenuItem()
         self.menu_time = Gtk.MenuItem()
@@ -36,6 +42,9 @@ class TrayIndicator:
 
         self.prof_parent = Gtk.MenuItem(f"VPN: {self._selected_profile or '-'}")
         self.prof_parent.set_submenu(self._build_profile_submenu())
+
+        self.theme_parent = Gtk.MenuItem(f"Tema: {self._selected_theme or '-'}")
+        self.theme_parent.set_submenu(self._build_theme_submenu())
 
         self.menu_toggle = Gtk.MenuItem("Ligar VPN")
         self.menu_toggle.connect("activate", lambda *a: self._on_toggle())
@@ -51,6 +60,7 @@ class TrayIndicator:
         menu.append(self.menu_time)
         menu.append(Gtk.SeparatorMenuItem())
         menu.append(self.prof_parent)
+        menu.append(self.theme_parent)
         menu.append(self.menu_toggle)
         menu.append(menu_show)
         menu.append(Gtk.SeparatorMenuItem())
@@ -91,6 +101,30 @@ class TrayIndicator:
         self._selected_profile = selected_profile
         self.prof_parent.set_submenu(self._build_profile_submenu())
         self.prof_parent.set_label(f"VPN: {self._selected_profile or '-'}")
+
+    def _build_theme_submenu(self) -> Gtk.Menu:
+        theme_menu = Gtk.Menu()
+        group: list[Gtk.RadioMenuItem] = []
+        for name in self._themes:
+            item = Gtk.RadioMenuItem.new_with_label(group, name)
+            group = item.get_group()
+            item.connect("activate", self._on_theme_item, name)
+            if name == self._selected_theme:
+                item.set_active(True)
+            theme_menu.append(item)
+        theme_menu.show_all()
+        return theme_menu
+
+    def _on_theme_item(self, _item: Gtk.RadioMenuItem, name: str) -> None:
+        if name != self._selected_theme and self._on_theme_selected is not None:
+            self._selected_theme = name
+            self._on_theme_selected(name)
+
+    def set_themes(self, themes: list[str], selected_theme: str | None) -> None:
+        self._themes = list(themes)
+        self._selected_theme = selected_theme
+        self.theme_parent.set_submenu(self._build_theme_submenu())
+        self.theme_parent.set_label(f"Tema: {self._selected_theme or '-'}")
 
     def set_selected_profile(self, name: str | None) -> None:
         # Igual ao update_tray_profile() legado: só atualiza o texto do submenu,

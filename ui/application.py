@@ -99,6 +99,9 @@ class VpnApp(Gtk.Application):
             on_show=self.show_win,
             on_quit=self.on_quit,
             on_profile_selected=self._on_profile_selected,
+            themes=self._theme_provider.list_themes(),
+            selected_theme=self._current_theme,
+            on_theme_selected=self._on_theme_selected,
         )
 
         events = self._controller.initialize()
@@ -148,6 +151,10 @@ class VpnApp(Gtk.Application):
     def _on_profile_selected(self, name: str) -> None:
         self._controller.select_profile(name)
         self._render()
+
+    def _on_theme_selected(self, name: str) -> None:
+        self._apply_theme(name)
+        self._theme_settings.save_selected_theme(name)
 
     def _on_button_clicked(self) -> None:
         if self._controller.state in (ConnectionState.CONNECTING, ConnectionState.CONNECTED):
