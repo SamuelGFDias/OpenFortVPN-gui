@@ -55,11 +55,24 @@ def test_start_escreve_no_log(tmp_path):
     assert "connect /etc/openfortivpn/matriz.conf" in content
 
 
-def test_stop_ignora_pid_recebido_e_mata_por_nome(tmp_path):
+def test_stop_com_pid_conhecido_sinaliza_o_pid_especifico(tmp_path):
     runner = FakeCommandRunner()
     backend = OpenfortivpnBackend(log_path=str(tmp_path / "log.txt"), command_runner=runner)
 
-    backend.stop(pid=9999)
+    backend.stop(pid=123)
+
+    assert len(runner.run_calls) == 1
+    args, kwargs = runner.run_calls[0]
+    assert args == SUDO + ["kill", "-TERM", "123"]
+    assert kwargs["stdout"] == subprocess.DEVNULL
+    assert kwargs["stderr"] == subprocess.DEVNULL
+
+
+def test_stop_sem_pid_cai_no_fallback_de_matar_por_nome(tmp_path):
+    runner = FakeCommandRunner()
+    backend = OpenfortivpnBackend(log_path=str(tmp_path / "log.txt"), command_runner=runner)
+
+    backend.stop(pid=None)
 
     assert len(runner.run_calls) == 1
     args, kwargs = runner.run_calls[0]

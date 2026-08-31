@@ -29,6 +29,13 @@ class OpenfortivpnBackend(VpnBackend):
         return proc.pid
 
     def stop(self, pid: int | None) -> None:
+        if pid is not None:
+            self._runner.run(
+                SUDO + ["kill", "-TERM", str(pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return
         self._runner.run(
             SUDO + ["pkill", "-x", "openfortivpn"],
             stdout=subprocess.DEVNULL,
