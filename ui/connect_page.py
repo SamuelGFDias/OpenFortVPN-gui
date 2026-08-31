@@ -1,5 +1,8 @@
 from typing import Callable
 
+import gi
+
+gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
 from core.models.connection_state import ConnectionState
