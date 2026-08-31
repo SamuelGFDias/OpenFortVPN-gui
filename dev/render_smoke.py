@@ -37,7 +37,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", nargs="?", default="/tmp/openfortivpn-gui-render.png")
     parser.add_argument("--page", choices=["connect", "history"], default="connect")
-    parser.add_argument("--delay", type=float, default=1.5, help="segundos antes do screenshot")
+    parser.add_argument("--delay", type=float, default=3.0, help="segundos antes do screenshot")
     args = parser.parse_args()
 
     app = VpnApp(application_id="local.openfortivpn.gui.dev")
@@ -46,6 +46,8 @@ def main() -> int:
     def on_activated(app: VpnApp) -> None:
         def snap() -> bool:
             try:
+                while Gtk.events_pending():
+                    Gtk.main_iteration()
                 if app.win is None:
                     raise RuntimeError("janela não foi criada por do_activate()")
                 stack = getattr(app, "_stack", None)
