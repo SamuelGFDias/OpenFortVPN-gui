@@ -4,8 +4,15 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
-from ui.application import VpnApp
+from cli.dispatch import is_cli_invocation
 
 if __name__ == "__main__":
+    if is_cli_invocation(sys.argv[1:]):
+        from cli.dispatch import main as cli_main
+
+        sys.exit(cli_main(sys.argv[1:]))
+
+    from ui.application import VpnApp
+
     app = VpnApp()
     app.run(None)

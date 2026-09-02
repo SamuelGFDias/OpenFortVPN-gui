@@ -8,6 +8,12 @@
 
 **Input**: User description: "Expor uma CLI programática para o openfortivpn-gui (issue #8), permitindo que processos externos (ex.: o projeto Farol) consultem o status da VPN e disparem conectar/desconectar sem precisar reimplementar a heurística interna do app nem ler arquivos internos não documentados. Decisão já tomada: CLI (não D-Bus), reaproveitando o VpnController existente."
 
+## Clarifications
+
+### Session 2026-09-02
+
+- Q: Quando um comando falhar (ex.: perfil inexistente, sem conexão ativa), o campo de mensagem legível dentro da saída `--json` deve ficar em português ou em inglês? → A: Opção A — estado/código de erro estruturado sempre em inglês/snake_case (estável, para o consumidor decidir programaticamente); mensagem legível (`message`) em PT-BR, só para exibição humana, nunca para o consumidor decidir por parsing de texto.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Consultar status da VPN por fora (Priority: P1)
@@ -77,7 +83,7 @@ Um processo externo precisa encerrar a conexão VPN ativa, tenha ela sido inicia
 - **FR-006**: `disconnect` MUST informar de forma explícita (mensagem e código de saída diferente de zero) quando não há nenhuma conexão ativa para encerrar.
 - **FR-007**: `connect <perfil>` MUST validar que o perfil informado existe antes de tentar conectar, informando erro claro (e código de saída diferente de zero) quando não existir.
 - **FR-008**: Todos os comandos MUST refletir o estado real do processo `openfortivpn` em execução no sistema no momento da chamada — não um valor em cache que possa estar desatualizado — funcionando corretamente tanto com a GUI aberta quanto fechada.
-- **FR-009**: O formato de saída de `status --json` MUST ser estável e documentado (nomes de campos e valores possíveis), para que um consumidor externo (ex.: o Farol) possa integrar sem inspecionar o código-fonte deste projeto.
+- **FR-009**: O formato de saída de `status --json` MUST ser estável e documentado (nomes de campos e valores possíveis), para que um consumidor externo (ex.: o Farol) possa integrar sem inspecionar o código-fonte deste projeto. Estado e códigos de erro estruturados MUST ficar em inglês/snake_case estável — é neles que o consumidor programático se baseia; qualquer mensagem legível para humano incluída na saída (ex.: campo `message`) fica em português (Princípio IV da constitution do projeto), mas serve apenas para exibição — MUST NOT ser a única forma de o consumidor identificar o que aconteceu.
 - **FR-010**: `disconnect` MUST encerrar de forma confiável a conexão real do sistema mesmo quando chamado por um processo diferente daquele que originou o `connect` (GUI ou outra invocação de CLI), reaproveitando o fallback já existente de encerrar o processo pelo nome (`pkill -x openfortivpn`) — não é requisito desta feature localizar e usar o PID exato salvo em disco (decisão de escopo: a correção de precisão do mecanismo de reattach fica fora desta feature).
 
 ### Key Entities

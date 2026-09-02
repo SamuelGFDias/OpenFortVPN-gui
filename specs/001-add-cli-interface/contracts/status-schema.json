@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "openfortivpn-gui CLI — status payload",
+  "description": "Saída estruturada de `openfortivpn-gui status --json`, e saída de sucesso de `connect`/`disconnect --json`.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "StatusPayload (sucesso)",
+      "type": "object",
+      "required": ["state", "selected_profile", "profiles", "session"],
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["disconnected", "connecting", "connected"]
+        },
+        "selected_profile": {
+          "type": ["string", "null"]
+        },
+        "profiles": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "session": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["profile", "iface", "started_at", "elapsed_seconds"],
+              "additionalProperties": false,
+              "properties": {
+                "profile": { "type": "string" },
+                "iface": { "type": ["string", "null"] },
+                "started_at": { "type": ["number", "null"] },
+                "elapsed_seconds": { "type": ["number", "null"] }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "title": "ErrorPayload (falha, exit code 1)",
+      "type": "object",
+      "required": ["error"],
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "profile_not_found",
+                "already_connected",
+                "not_connected",
+                "connect_timeout",
+                "sudo_denied",
+                "internal_error"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "description": "Mensagem legível em português — apenas para exibição humana, nunca a única forma de identificar o erro."
+            }
+          }
+        }
+      }
+    }
+  ]
+}

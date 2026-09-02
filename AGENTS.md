@@ -48,9 +48,18 @@ interna sim.
   `network-vpn`), `profile_dialog.py` (`Gtk.Dialog` de criação/edição de perfil: nome, host,
   porta, usuário, senha e ícone opcional via `Gtk.FileChooserButton`; em modo edição o campo
   nome fica travado e os demais vêm pré-preenchidos a partir do `.conf` existente).
-- `tests/` — suíte pytest (103 testes) cobrindo `core/models`, `services` e `controller` com
-  fakes/dublês (via `CommandRunner` e os contratos ABC). A camada `ui/` (GTK/AppIndicator) não é
-  testada automaticamente — validação é por smoke test manual (`dev/render_smoke.sh`).
+- `cli/` — interface de linha de comando programática (issue #8, corrigida): `dispatch.py`
+  (`is_cli_invocation()` decide se `argv` começa por um dos subcomandos reconhecidos —
+  `status`/`connect`/`disconnect` — usado pelo entrypoint antes de importar GTK; `main()` faz o
+  parse com `argparse` e resolve o exit code), `wiring.py` (`build_controller()` monta o mesmo
+  `VpnController` com as mesmas implementações de `services/` usadas pela GUI — fonte única de
+  verdade sobre como montar o controller), `commands.py` (`status_command()`, `connect_command()`
+  — bloqueia fazendo *polling* de `controller.tick()` a cada 1s até confirmar ou até o timeout —,
+  `disconnect_command()`), `formatting.py` (serializa `StatusPayload`/`ErrorPayload` e formata
+  texto legível em PT-BR para o modo sem `--json`). Nenhum módulo de `cli/` importa `gi`/`Gtk`.
+- `tests/` — suíte pytest (130 testes) cobrindo `core/models`, `services`, `controller` e `cli/`
+  com fakes/dublês (via `CommandRunner` e os contratos ABC). A camada `ui/` (GTK/AppIndicator) não
+  é testada automaticamente — validação é por smoke test manual (`dev/render_smoke.sh`).
 - `requirements.txt` (dependências de runtime) / `requirements/dev.txt` (+ pytest) / `pytest.ini`.
 - `README.md` — instalação e uso.
 - Instalado via symlink em `~/.local/bin/openfortivpn-gui` (fora deste repo, não versionado).
@@ -100,6 +109,18 @@ interna sim.
   em `ProfileIconStore` começa com `/`, é tratado como caminho de arquivo de imagem; caso
   contrário, como nome de ícone do tema GTK ativo. Sem valor configurado, ou em caso de falha ao
   carregar, cai no ícone padrão `network-vpn`.
+- Interface CLI programática (issue #8, corrigida): o entrypoint `openfortivpn-gui` (raiz) decide
+  entre modo GUI e modo CLI *antes* de `from ui.application import VpnApp` (e portanto antes de
+  puxar GTK), via `cli.dispatch.is_cli_invocation(sys.argv[1:])` — `argv` começando por `status`,
+  `connect` ou `disconnect` cai no modo CLI; qualquer outro caso (sem argumentos, ou argumento não
+  reconhecido) abre a GUI, comportamento idêntico ao anterior a esta feature. O modo CLI reaproveita
+  o mesmo `VpnController` e os mesmos `services/` já usados pela GUI, montados por
+  `cli/wiring.build_controller()` — não há duplicação de regra de negócio entre os dois modos.
+  `status --json` tem contrato de saída estável e documentado em
+  `specs/001-add-cli-interface/contracts/` (schema JSON e tabela de exit codes); a saída sem
+  `--json` é texto formatado, sem contrato formal. Segue a mesma decisão de idioma do resto do
+  projeto: código (nomes de módulos, campos do payload, `error.code`) estruturado em inglês,
+  mensagens voltadas ao usuário (`error.message`, texto humano) em PT-BR.
 - Persistência de estado do app (não da VPN em si), via `services/runtime_paths.py`:
   - `~/.config/openfortivpn-gui/state.json` — último perfil usado e interface de reattach
     (`JsonAppStateStore`).
@@ -128,9 +149,8 @@ interna sim.
 
 ## Limitações conhecidas
 
-As 7 issues originais (#1–#7) foram corrigidas/implementadas na refatoração modular — ver
-"Arquitetura / fluxo" acima para o que mudou em cada caso. Limitações residuais aceitas
-deliberadamente:
+As 8 issues originais (#1–#8) foram corrigidas/implementadas — ver "Arquitetura / fluxo" acima
+para o que mudou em cada caso. Limitações residuais aceitas deliberadamente:
 
 1. `stop()` não escalona para SIGKILL nem espera confirmação de que o processo morreu — decisão
    consciente para não bloquear a thread única do GTK.
@@ -147,6 +167,13 @@ deliberadamente:
    preservados no arquivo, mas quem precisar criá-los do zero ainda edita o `.conf` manualmente.
 5. Perfis administrados em `/etc/openfortivpn/` não podem ser editados nem renomeados pela GUI —
    só perfis criados por ela mesma, em `~/.config/openfortivpn-gui/profiles/`.
+6. `disconnect` via CLI, quando chamado por um processo diferente do que iniciou a conexão (ex.:
+   conectou pela GUI, desconectou pela CLI, ou vice-versa), não conhece o PID exato da sessão e
+   cai no mesmo fallback "matar por nome" (`pkill -x openfortivpn`) já usado pelo reattach sem PID
+   salvo — ver `stop()` em "Arquitetura / fluxo". Decisão de escopo deliberada da issue #8
+   (`research.md`/`data-model.md` da feature), não um bug: o PID interno de `ConnectionSession`
+   nunca é exposto fora do processo que o guarda, então um processo externo não teria como
+   endereçar o processo exato mesmo se quisesse.
 
 ## Convenções
 

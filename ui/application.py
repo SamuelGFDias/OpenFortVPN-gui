@@ -7,23 +7,20 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("AppIndicator3", "0.1")
 from gi.repository import Gdk, GLib, Gtk
 
-from controller.vpn_controller import VpnController
+from cli.wiring import build_controller
 from core.models.connection_state import ConnectionState
 from core.models.controller_event import ControllerEvent
 from services.filesystem_profile_source import FilesystemProfileSource
 from services.filesystem_profile_writer import FilesystemProfileWriter
 from services.filesystem_theme_provider import DEFAULT_THEME_NAME, FilesystemThemeProvider
 from services.json_profile_icon_store import JsonProfileIconStore
-from services.json_state_store import JsonAppStateStore, JsonHistoryStore
 from services.json_theme_settings_store import JsonThemeSettingsStore
-from services.openfortivpn_backend import OpenfortivpnBackend
 from services.profile_config import (
     build_profile_config,
     parse_profile_config,
     sanitize_profile_filename,
     validate_new_profile,
 )
-from services.sysfs_tunnel_detector import SysfsTunnelDetector
 from ui.connect_page import ConnectPage
 from ui.formatting import fmt
 from ui.history_page import HistoryPage
@@ -39,13 +36,7 @@ class VpnApp(Gtk.Application):
         super().__init__(application_id=application_id)
 
         self._profile_source = FilesystemProfileSource()
-        self._controller = VpnController(
-            backend=OpenfortivpnBackend(),
-            detector=SysfsTunnelDetector(),
-            profile_source=self._profile_source,
-            app_state_store=JsonAppStateStore(),
-            history_store=JsonHistoryStore(),
-        )
+        self._controller = build_controller()
 
         self._theme_provider = FilesystemThemeProvider()
         self._theme_settings = JsonThemeSettingsStore()
