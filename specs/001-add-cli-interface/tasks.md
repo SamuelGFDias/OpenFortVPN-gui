@@ -171,7 +171,7 @@ subcomandos (mesmo que ainda não façam nada) — user stories podem começar.
   `test_dispatch_invalid_args_exit_code_2` em `tests/test_cli_dispatch.py` — só parsing de `argv`
   e decisão CLI vs GUI, sem tocar no controller real.
 - [x] T020 Rodar a suíte completa `python3 -m pytest tests/` e confirmar 0 falhas antes de seguir.
-- [ ] T021 Validar manualmente o roteiro de `quickstart.md` (os 5 passos) num ambiente com
+- [x] T021 Validar manualmente o roteiro de `quickstart.md` (os 5 passos) num ambiente com
   `sudo -n openfortivpn` configurado.
 - [x] T022 [P] Atualizar `AGENTS.md` documentando o novo modo CLI (issue #8): seção "Estrutura"
   (novo pacote `cli/`) e "Arquitetura / fluxo" (dispatch no entrypoint, contrato de
